@@ -1,8 +1,12 @@
-"dependencies": {
-  "express": "^4.18.2",
-  "node-fetch": "^3.3.2"
-},
-"scripts": {
-  "start": "node index.js"
-},
-"type": "module"
+{
+  "name": "tickettime-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-fetch": "^3.3.2"
+  }
+}
