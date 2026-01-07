@@ -1,4 +1,6 @@
-const fetch = require("node-fetch"); // make sure node-fetch is installed
+"scripts": {
+  "start": "node index.js"
+}const fetch = require("node-fetch"); // make sure node-fetch is installed
 
 // Log server's public IP for MyBookie whitelisting
 fetch("https://api.ipify.org?format=json")
