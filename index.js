@@ -7,8 +7,7 @@ const port = process.env.PORT || 10000;
 /* ============================
    CONFIG
 ============================ */
-// Trim the API key to remove any accidental spaces or newlines
-const ODDS_API_KEY = process.env.ODDS_API_KEY?.trim();
+const SPORTS_ODDS_API_KEY = process.env.SPORTS_ODDS_API_KEY;
 
 /* ============================
    ROOT
@@ -18,13 +17,13 @@ app.get("/", (req, res) => {
 });
 
 /* ============================
-   TEST API KEY (STEP 2)
+   TEST API KEY
 ============================ */
 app.get("/test-key", (req, res) => {
   res.json({
     success: true,
-    keyExists: !!ODDS_API_KEY,
-    keyValue: ODDS_API_KEY // optional, can remove if you don't want to expose
+    keyExists: !!SPORTS_ODDS_API_KEY,
+    keyValue: SPORTS_ODDS_API_KEY // optional
   });
 });
 
@@ -45,19 +44,22 @@ app.get("/ip", async (req, res) => {
 ============================ */
 app.get("/odds", async (req, res) => {
   try {
-    const url = `https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?regions=us&markets=h2h,spreads,totals&apiKey=${ODDS_API_KEY}`;
+    const url = `https://api.sportsgameodds.com/v2/events?oddsAvailable=true&leagueID=NBA&limit=20`;
 
-    const response = await fetch(url);
+    const response = await fetch(url, {
+      headers: { "x-api-key": SPORTS_ODDS_API_KEY }
+    });
+
     if (!response.ok) {
       return res.status(500).json({ error: "Failed to fetch odds" });
     }
 
     const data = await response.json();
-
-    const games = data.map(game => ({
-      gameId: game.id,
-      matchup: `${game.home_team} vs ${game.away_team}`,
-      startTime: game.commence_time
+    const games = data.events.map(game => ({
+      gameId: game.eventID,
+      matchup: `${game.homeTeam} vs ${game.awayTeam}`,
+      startTime: game.startTime,
+      league: "NBA"
     }));
 
     res.json({ success: true, games });
@@ -68,46 +70,37 @@ app.get("/odds", async (req, res) => {
 });
 
 /* ============================
-   PLAYER PROPS (NBA) - SAFE VERSION
+   PLAYER PROPS (NBA)
 ============================ */
 app.get("/player-props", async (req, res) => {
   try {
-    if (!ODDS_API_KEY) throw new Error("API key missing");
+    const url = `https://api.sportsgameodds.com/v2/events?oddsAvailable=true&leagueID=NBA&limit=20`;
 
-    const url = `https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?regions=us&markets=player_points,player_rebounds,player_assists&apiKey=${ODDS_API_KEY}`;
+    const response = await fetch(url, {
+      headers: { "x-api-key": SPORTS_ODDS_API_KEY }
+    });
 
-    console.log("Fetching player props from URL:", url);
-
-    const response = await fetch(url);
-    let data = [];
-    if (response.ok) {
-      data = await response.json();
-    } else {
-      const text = await response.text();
-      console.log("Odds API error:", text);
+    if (!response.ok) {
+      return res.status(500).json({ error: "Failed to fetch player props" });
     }
 
+    const data = await response.json();
     const playerProps = [];
 
-    data.forEach(game => {
-      game.bookmakers?.forEach(book => {
-        book.markets?.forEach(market => {
-          market.outcomes?.forEach(outcome => {
-            playerProps.push({
-              league: "NBA",
-              game: `${game.home_team} vs ${game.away_team}`,
-              player: outcome.description,
-              stat: market.key,
-              line: outcome.point,
-              odds: outcome.price,
-              sportsbook: book.title
-            });
-          });
+    data.events.forEach(game => {
+      game.playerProps?.forEach(prop => {
+        playerProps.push({
+          league: "NBA",
+          game: `${game.homeTeam} vs ${game.awayTeam}`,
+          player: prop.playerName,
+          stat: prop.statType,
+          line: prop.line,
+          odds: prop.odds,
+          sportsbook: prop.bookmaker
         });
       });
     });
 
-    // Always return valid JSON
     res.json({
       success: true,
       count: playerProps.length,
@@ -115,12 +108,7 @@ app.get("/player-props", async (req, res) => {
     });
 
   } catch (err) {
-    console.log("Catch error in /player-props:", err.message);
-    res.json({
-      success: true,
-      count: 0,
-      playerProps: []
-    });
+    res.status(500).json({ error: err.message });
   }
 });
 
