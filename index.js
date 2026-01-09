@@ -1,20 +1,21 @@
 import express from "express";
 import fetch from "node-fetch";
-import bodyParser from "body-parser";
 
 const app = express();
-const port = process.env.PORT || 10000;
+const PORT = process.env.PORT || 10000;
 
 /* ============================
    CONFIG
 ============================ */
 const SPORTS_ODDS_API_KEY = process.env.SPORTS_ODDS_API_KEY?.trim();
 
-app.use(bodyParser.json());
+/* ============================
+   MIDDLEWARE
+============================ */
+app.use(express.json()); // built-in JSON parser
 
 /* ============================
    IN-MEMORY STORAGE
-   (Replace with DB in production)
 ============================ */
 let users = []; // {id, email, password, balance, bets: []}
 let nextUserId = 1;
@@ -32,27 +33,13 @@ app.get("/", (req, res) => {
 app.get("/test-key", (req, res) => {
   res.json({
     success: true,
-    keyExists: !!SPORTS_ODDS_API_KEY,
-    keyValue: SPORTS_ODDS_API_KEY // remove in production
+    keyExists: !!SPORTS_ODDS_API_KEY
   });
-});
-
-/* ============================
-   CHECK SERVER IP
-============================ */
-app.get("/ip", async (req, res) => {
-  try {
-    const r = await fetch("https://api.ipify.org?format=json");
-    res.json(await r.json());
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch IP" });
-  }
 });
 
 /* ============================
    USER ACCOUNT
 ============================ */
-// Register
 app.post("/register", (req, res) => {
   const { email, password } = req.body;
   if (!email || !password) return res.status(400).json({ success: false, error: "Missing fields" });
@@ -63,7 +50,6 @@ app.post("/register", (req, res) => {
   res.json({ success: true, userId: user.id });
 });
 
-// Login
 app.post("/login", (req, res) => {
   const { email, password } = req.body;
   const user = users.find(u => u.email === email && u.password === password);
@@ -76,10 +62,8 @@ app.post("/login", (req, res) => {
 ============================ */
 app.post("/deposit", (req, res) => {
   const { userId, amount } = req.body;
-  if (!userId || !amount || amount <= 0) return res.status(400).json({ success: false, error: "Invalid deposit" });
-
   const user = users.find(u => u.id === userId);
-  if (!user) return res.status(404).json({ success: false, error: "User not found" });
+  if (!user || !amount || amount <= 0) return res.status(400).json({ success: false, error: "Invalid deposit" });
 
   user.balance += amount;
   res.json({ success: true, balance: user.balance });
@@ -87,10 +71,8 @@ app.post("/deposit", (req, res) => {
 
 app.post("/withdraw", (req, res) => {
   const { userId, amount } = req.body;
-  if (!userId || !amount || amount <= 0) return res.status(400).json({ success: false, error: "Invalid withdrawal" });
-
   const user = users.find(u => u.id === userId);
-  if (!user) return res.status(404).json({ success: false, error: "User not found" });
+  if (!user || !amount || amount <= 0) return res.status(400).json({ success: false, error: "Invalid withdrawal" });
   if (user.balance < amount) return res.status(400).json({ success: false, error: "Insufficient balance" });
 
   user.balance -= amount;
@@ -175,20 +157,6 @@ app.post("/place-bet", async (req, res) => {
   try {
     user.balance -= totalOdds;
     bets.forEach(b => user.bets.push({ ...b, placedAt: new Date() }));
-
-    // OPTIONAL: send to sportsbook API
-    const results = await Promise.all(bets.map(async (bet) => {
-      const response = await fetch("https://sportsgameodds.com/v2/place-bet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": SPORTS_ODDS_API_KEY },
-        body: JSON.stringify(bet)
-      });
-      return await response.json();
-    }));
-
-    const failed = results.filter(r => !r.success);
-    if (failed.length > 0) return res.json({ success: false, error: "Some bets failed", details: failed });
-
     res.json({ success: true, balance: user.balance });
   } catch (err) {
     console.error(err);
@@ -209,4 +177,4 @@ app.get("/bets", (req, res) => {
 /* ============================
    START SERVER
 ============================ */
-app.listen(port, () => console.log(`TicketTime backend running on port ${port}`));
+app.listen(PORT, () => console.log(`TicketTime backend running on port ${PORT}`));
