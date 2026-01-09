@@ -24,7 +24,7 @@ app.get("/test-key", (req, res) => {
   res.json({
     success: true,
     keyExists: !!SPORTS_ODDS_API_KEY,
-    keyValue: SPORTS_ODDS_API_KEY // optional, remove if you don't want to expose
+    keyValue: SPORTS_ODDS_API_KEY
   });
 });
 
@@ -88,9 +88,7 @@ app.get("/player-props", async (req, res) => {
     const data = await response.json();
     const playerProps = [];
 
-    // Ensure data.events exists before looping
     (data.events || []).forEach(game => {
-      // Safely check if game.playerProps exists
       (game.playerProps || []).forEach(prop => {
         playerProps.push({
           league: "NBA",
@@ -99,7 +97,8 @@ app.get("/player-props", async (req, res) => {
           stat: prop.statType,
           line: prop.line,
           odds: prop.odds,
-          sportsbook: prop.bookmaker
+          sportsbook: prop.bookmaker,
+          overUnder: prop.overUnder || null // dynamic O/U if available
         });
       });
     });
