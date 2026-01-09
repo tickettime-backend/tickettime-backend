@@ -7,7 +7,8 @@ const port = process.env.PORT || 10000;
 /* ============================
    CONFIG
 ============================ */
-const ODDS_API_KEY = process.env.ODDS_API_KEY;
+// Trim the API key to remove any accidental spaces or newlines
+const ODDS_API_KEY = process.env.ODDS_API_KEY?.trim();
 
 /* ============================
    ROOT
