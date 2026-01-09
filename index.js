@@ -24,7 +24,7 @@ app.get("/test-key", (req, res) => {
   res.json({
     success: true,
     keyExists: !!SPORTS_ODDS_API_KEY,
-    keyValue: SPORTS_ODDS_API_KEY // optional
+    keyValue: SPORTS_ODDS_API_KEY // optional, remove if you don't want to expose
   });
 });
 
@@ -56,7 +56,7 @@ app.get("/odds", async (req, res) => {
     }
 
     const data = await response.json();
-    const games = data.events.map(game => ({
+    const games = (data.events || []).map(game => ({
       gameId: game.eventID,
       matchup: `${game.homeTeam} vs ${game.awayTeam}`,
       startTime: game.startTime,
@@ -88,8 +88,10 @@ app.get("/player-props", async (req, res) => {
     const data = await response.json();
     const playerProps = [];
 
-    data.events.forEach(game => {
-      game.playerProps?.forEach(prop => {
+    // Ensure data.events exists before looping
+    (data.events || []).forEach(game => {
+      // Safely check if game.playerProps exists
+      (game.playerProps || []).forEach(prop => {
         playerProps.push({
           league: "NBA",
           game: `${game.homeTeam} vs ${game.awayTeam}`,
