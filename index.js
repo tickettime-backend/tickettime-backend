@@ -7,7 +7,7 @@ const port = process.env.PORT || 10000;
 /* ============================
    CONFIG
 ============================ */
-const ODDS_API_KEY = "PASTE_YOUR_API_KEY_HERE";
+const ODDS_API_KEY = process.env.ODDS_API_KEY;
 
 /* ============================
    ROOT
@@ -20,19 +20,22 @@ app.get("/", (req, res) => {
    CHECK SERVER IP
 ============================ */
 app.get("/ip", async (req, res) => {
-  const r = await fetch("https://api.ipify.org?format=json");
-  res.json(await r.json());
+  try {
+    const r = await fetch("https://api.ipify.org?format=json");
+    res.json(await r.json());
+  } catch (err) {
+    res.status(500).json({ error: "Failed to fetch IP" });
+  }
 });
 
 /* ============================
-   ODDS (GAMES / LEAGUES)
+   ODDS (NBA GAMES)
 ============================ */
 app.get("/odds", async (req, res) => {
   try {
-    const response = await fetch(
-      `https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?regions=us&markets=h2h,spreads,totals&apiKey=${ODDS_API_KEY}`
-    );
+    const url = `https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?regions=us&markets=h2h,spreads,totals&apiKey=${ODDS_API_KEY}`;
 
+    const response = await fetch(url);
     if (!response.ok) {
       return res.status(500).json({ error: "Failed to fetch odds" });
     }
@@ -53,14 +56,13 @@ app.get("/odds", async (req, res) => {
 });
 
 /* ============================
-   PLAYER PROPS (REAL DATA)
+   PLAYER PROPS (NBA)
 ============================ */
 app.get("/player-props", async (req, res) => {
   try {
-    const response = await fetch(
-      `https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?regions=us&markets=player_points,player_rebounds,player_assists&apiKey=${ODDS_API_KEY}`
-    );
+    const url = `https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?regions=us&markets=player_points,player_rebounds,player_assists&apiKey=${ODDS_API_KEY}`;
 
+    const response = await fetch(url);
     if (!response.ok) {
       return res.status(500).json({ error: "Failed to fetch player props" });
     }
@@ -69,9 +71,9 @@ app.get("/player-props", async (req, res) => {
     const playerProps = [];
 
     data.forEach(game => {
-      game.bookmakers.forEach(book => {
-        book.markets.forEach(market => {
-          market.outcomes.forEach(outcome => {
+      game.bookmakers?.forEach(book => {
+        book.markets?.forEach(market => {
+          market.outcomes?.forEach(outcome => {
             playerProps.push({
               league: "NBA",
               game: `${game.home_team} vs ${game.away_team}`,
