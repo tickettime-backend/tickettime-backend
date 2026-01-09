@@ -9,10 +9,12 @@ const port = process.env.PORT || 10000;
    CONFIG
 ============================ */
 const SPORTS_ODDS_API_KEY = process.env.SPORTS_ODDS_API_KEY?.trim();
+
 app.use(bodyParser.json());
 
 /* ============================
-   IN-MEMORY STORAGE (replace with DB in production)
+   IN-MEMORY STORAGE
+   (Replace with DB in production)
 ============================ */
 let users = []; // {id, email, password, balance, bets: []}
 let nextUserId = 1;
@@ -31,7 +33,7 @@ app.get("/test-key", (req, res) => {
   res.json({
     success: true,
     keyExists: !!SPORTS_ODDS_API_KEY,
-    keyValue: SPORTS_ODDS_API_KEY // Remove in production
+    keyValue: SPORTS_ODDS_API_KEY // remove in production
   });
 });
 
@@ -48,7 +50,7 @@ app.get("/ip", async (req, res) => {
 });
 
 /* ============================
-   USER ACCOUNT ENDPOINTS
+   USER ACCOUNT
 ============================ */
 // Register
 app.post("/register", (req, res) => {
@@ -70,7 +72,7 @@ app.post("/login", (req, res) => {
 });
 
 /* ============================
-   DEPOSIT / WITHDRAW
+   WALLET
 ============================ */
 app.post("/deposit", (req, res) => {
   const { userId, amount } = req.body;
@@ -161,13 +163,12 @@ app.get("/player-props", async (req, res) => {
 ============================ */
 app.post("/place-bet", async (req, res) => {
   const { userId, bets } = req.body;
-  if (!userId) return res.status(400).json({ success: false, error: "Missing userId" });
-  if (!bets || !Array.isArray(bets) || bets.length === 0) return res.status(400).json({ success: false, error: "No bets provided" });
+  if (!userId || !bets || !Array.isArray(bets) || bets.length === 0)
+    return res.status(400).json({ success: false, error: "Invalid request" });
 
   const user = users.find(u => u.id === userId);
   if (!user) return res.status(404).json({ success: false, error: "User not found" });
 
-  // Sum total odds to deduct from balance
   const totalOdds = bets.reduce((acc, b) => acc + b.odds, 0);
   if (user.balance < totalOdds) return res.status(400).json({ success: false, error: "Insufficient balance" });
 
@@ -175,11 +176,22 @@ app.post("/place-bet", async (req, res) => {
     user.balance -= totalOdds;
     bets.forEach(b => user.bets.push({ ...b, placedAt: new Date() }));
 
-    // Optional: integrate with sportsbook API here
+    // OPTIONAL: send to sportsbook API
+    const results = await Promise.all(bets.map(async (bet) => {
+      const response = await fetch("https://sportsgameodds.com/v2/place-bet", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-api-key": SPORTS_ODDS_API_KEY },
+        body: JSON.stringify(bet)
+      });
+      return await response.json();
+    }));
+
+    const failed = results.filter(r => !r.success);
+    if (failed.length > 0) return res.json({ success: false, error: "Some bets failed", details: failed });
 
     res.json({ success: true, balance: user.balance });
   } catch (err) {
-    console.error("Place Bet Error:", err);
+    console.error(err);
     res.status(500).json({ success: false, error: "Failed to place bet" });
   }
 });
