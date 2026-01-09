@@ -4,199 +4,102 @@ import fetch from "node-fetch";
 const app = express();
 const port = process.env.PORT || 10000;
 
-// =====================
-// Log server public IP
-// =====================
-fetch("https://api.ipify.org?format=json")
-  .then(res => res.json())
-  .then(data => console.log("Server public IP:", data.ip))
-  .catch(err => console.error(err));
+/* ============================
+   CONFIG
+============================ */
+const ODDS_API_KEY = "PASTE_YOUR_API_KEY_HERE";
 
-// =====================
-// Root route
-// =====================
+/* ============================
+   ROOT
+============================ */
 app.get("/", (req, res) => {
-  res.send("TicketTime backend is running!");
+  res.send("TicketTime backend running ✅");
 });
 
-// =====================
-// Optional: check server IP via browser
-// =====================
+/* ============================
+   CHECK SERVER IP
+============================ */
 app.get("/ip", async (req, res) => {
-  try {
-    const response = await fetch("https://api.ipify.org?format=json");
-    const data = await response.json();
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ error: "Failed to fetch IP" });
-  }
+  const r = await fetch("https://api.ipify.org?format=json");
+  res.json(await r.json());
 });
 
-// =====================
-// /test-odds route
-// =====================
-app.get("/test-odds", async (req, res) => {
-  try {
-    const response = await fetch("https://www.mybookie.ag/odds/", {
-      headers: {
-        "User-Agent": "TicketTime-Backend",
-        "Accept": "application/json"
-      }
-    });
-
-    const text = await response.text();
-
-    res.status(response.status).send({
-      status: response.status,
-      bodyPreview: text.substring(0, 500) // first 500 characters
-    });
-  } catch (err) {
-    res.status(500).send({ error: err.message });
-  }
-});
-
-// =====================
-// /odds route
-// =====================
+/* ============================
+   ODDS (GAMES / LEAGUES)
+============================ */
 app.get("/odds", async (req, res) => {
   try {
-    const response = await fetch("https://www.mybookie.ag/odds/", {
-      headers: {
-        "User-Agent": "TicketTime-Backend",
-        "Accept": "application/json"
-      }
-    });
+    const response = await fetch(
+      `https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?regions=us&markets=h2h,spreads,totals&apiKey=${ODDS_API_KEY}`
+    );
 
     if (!response.ok) {
-      return res.status(response.status).json({ error: "Failed to fetch odds" });
+      return res.status(500).json({ error: "Failed to fetch odds" });
     }
 
     const data = await response.json();
-    const formattedOdds = [];
 
-    data.data.forEach(group => {
-      if (group.children) {
-        group.children.forEach(league => {
-          if (league.children) {
-            league.children.forEach(item => {
-              if (item.type === "league_link") {
-                formattedOdds.push({
-                  league: league.display_name,
-                  name: item.display_name,
-                  url: item.url
-                });
-              }
-            });
-          }
-        });
-      }
-    });
+    const games = data.map(game => ({
+      gameId: game.id,
+      matchup: `${game.home_team} vs ${game.away_team}`,
+      startTime: game.commence_time
+    }));
 
-    res.json({
-      success: true,
-      odds: formattedOdds
-    });
+    res.json({ success: true, games });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error fetching odds" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// =====================
-// /player-props route
-// =====================
+/* ============================
+   PLAYER PROPS (REAL DATA)
+============================ */
 app.get("/player-props", async (req, res) => {
   try {
-    // 1️⃣ Fetch main feed
-    const mainResp = await fetch("https://www.mybookie.ag/odds/", {
-      headers: {
-        "User-Agent": "TicketTime-Backend",
-        "Accept": "application/json"
-      }
-    });
+    const response = await fetch(
+      `https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?regions=us&markets=player_points,player_rebounds,player_assists&apiKey=${ODDS_API_KEY}`
+    );
 
-    if (!mainResp.ok) {
-      return res.status(mainResp.status).json({ error: "Failed to fetch main feed" });
+    if (!response.ok) {
+      return res.status(500).json({ error: "Failed to fetch player props" });
     }
 
-    const mainData = await mainResp.json();
-    const leagueLinks = [];
-
-    // 2️⃣ Collect league URLs
-    mainData.data.forEach(group => {
-      if (group.children) {
-        group.children.forEach(league => {
-          if (league.children) {
-            league.children.forEach(item => {
-              if (item.type === "league_link" && item.url) {
-                leagueLinks.push({
-                  league: league.display_name,
-                  url: "https://www.mybookie.ag/" + item.url
-                });
-              }
-            });
-          }
-        });
-      }
-    });
-
+    const data = await response.json();
     const playerProps = [];
 
-    // 3️⃣ Fetch each league for actual player props
-    for (const link of leagueLinks) {
-      try {
-        const resp = await fetch(link.url, {
-          headers: {
-            "User-Agent": "TicketTime-Backend",
-            "Accept": "application/json"
-          }
-        });
-
-        if (!resp.ok) continue;
-
-        const data = await resp.json();
-
-        if (data.data) {
-          data.data.forEach(game => {
-            if (game.children) {
-              game.children.forEach(market => {
-                if (market.type === "player_prop" && market.outcomes) {
-                  market.outcomes.forEach(outcome => {
-                    playerProps.push({
-                      league: link.league,
-                      game: game.display_name,
-                      player: market.player_name || outcome.player_name,
-                      stat: market.stat_name || outcome.stat_name,
-                      overUnder: market.over_under || outcome.over_under,
-                      oddsOver: outcome.odds_over || outcome.odds,
-                      oddsUnder: outcome.odds_under || outcome.odds
-                    });
-                  });
-                }
-              });
-            }
+    data.forEach(game => {
+      game.bookmakers.forEach(book => {
+        book.markets.forEach(market => {
+          market.outcomes.forEach(outcome => {
+            playerProps.push({
+              league: "NBA",
+              game: `${game.home_team} vs ${game.away_team}`,
+              player: outcome.description,
+              stat: market.key,
+              line: outcome.point,
+              odds: outcome.price,
+              sportsbook: book.title
+            });
           });
-        }
-      } catch (err) {
-        console.error(`Error fetching league ${link.url}: ${err.message}`);
-      }
-    }
+        });
+      });
+    });
 
     res.json({
       success: true,
+      count: playerProps.length,
       playerProps
     });
 
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Server error fetching player props" });
+    res.status(500).json({ error: err.message });
   }
 });
 
-// =====================
-// Start server
-// =====================
+/* ============================
+   START SERVER
+============================ */
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
