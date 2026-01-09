@@ -7,7 +7,8 @@ const port = process.env.PORT || 10000;
 /* ============================
    CONFIG
 ============================ */
-const SPORTS_ODDS_API_KEY = process.env.SPORTS_ODDS_API_KEY;
+// Trim the API key to remove any extra spaces/newlines
+const SPORTS_ODDS_API_KEY = process.env.SPORTS_ODDS_API_KEY?.trim();
 
 /* ============================
    ROOT
