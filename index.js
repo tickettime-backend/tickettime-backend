@@ -17,6 +17,17 @@ app.get("/", (req, res) => {
 });
 
 /* ============================
+   TEST API KEY (STEP 2)
+============================ */
+app.get("/test-key", (req, res) => {
+  res.json({
+    success: true,
+    keyExists: !!ODDS_API_KEY,
+    keyValue: ODDS_API_KEY // optional, can remove if you don't want to expose
+  });
+});
+
+/* ============================
    CHECK SERVER IP
 ============================ */
 app.get("/ip", async (req, res) => {
