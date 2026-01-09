@@ -26,7 +26,7 @@ app.get("/ip", async (req, res) => {
   }
 });
 
-// ===== ADD THIS: /test-odds ROUTE =====
+// ===== /test-odds route =====
 app.get("/test-odds", async (req, res) => {
   try {
     const response = await fetch("https://www.mybookie.ag/odds/", {
@@ -42,12 +42,4 @@ app.get("/test-odds", async (req, res) => {
       status: response.status,
       bodyPreview: text.substring(0, 500) // first 500 characters
     });
-  } catch (err) {
-    res.status(500).send({ error: err.message });
-  }
-});
-// ======================================
-
-app.listen(port, () => {
-  console.log(`Server running on port ${port}`);
-});
+  } cat
