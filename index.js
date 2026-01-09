@@ -167,37 +167,15 @@ app.post("/place-bet", async (req, res) => {
   const user = users.find(u => u.id === userId);
   if (!user) return res.status(404).json({ success: false, error: "User not found" });
 
-  // Check if user has enough balance
+  // Sum total odds to deduct from balance
   const totalOdds = bets.reduce((acc, b) => acc + b.odds, 0);
   if (user.balance < totalOdds) return res.status(400).json({ success: false, error: "Insufficient balance" });
 
   try {
-    // Subtract balance
     user.balance -= totalOdds;
-
-    // Save bets in user history
     bets.forEach(b => user.bets.push({ ...b, placedAt: new Date() }));
 
-    // OPTIONAL: integrate with sportsbook API
-    const results = await Promise.all(bets.map(async (bet) => {
-      const response = await fetch("https://sportsgameodds.com/v2/place-bet", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-api-key": SPORTS_ODDS_API_KEY },
-        body: JSON.stringify({
-          sport: bet.sport,
-          gameId: bet.gameId,
-          player: bet.player,
-          stat: bet.stat,
-          line: bet.line,
-          odds: bet.odds,
-          overUnder: bet.overUnder
-        })
-      });
-      return await response.json();
-    }));
-
-    const failed = results.filter(r => !r.success);
-    if (failed.length > 0) return res.json({ success: false, error: "Some bets failed", details: failed });
+    // Optional: integrate with sportsbook API here
 
     res.json({ success: true, balance: user.balance });
   } catch (err) {
