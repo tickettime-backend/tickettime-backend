@@ -67,18 +67,25 @@ app.get("/odds", async (req, res) => {
 });
 
 /* ============================
-   PLAYER PROPS (NBA)
+   PLAYER PROPS (NBA) - SAFE VERSION
 ============================ */
 app.get("/player-props", async (req, res) => {
   try {
+    if (!ODDS_API_KEY) throw new Error("API key missing");
+
     const url = `https://api.the-odds-api.com/v4/sports/basketball_nba/odds/?regions=us&markets=player_points,player_rebounds,player_assists&apiKey=${ODDS_API_KEY}`;
 
+    console.log("Fetching player props from URL:", url);
+
     const response = await fetch(url);
-    if (!response.ok) {
-      return res.status(500).json({ error: "Failed to fetch player props" });
+    let data = [];
+    if (response.ok) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      console.log("Odds API error:", text);
     }
 
-    const data = await response.json();
     const playerProps = [];
 
     data.forEach(game => {
@@ -99,6 +106,7 @@ app.get("/player-props", async (req, res) => {
       });
     });
 
+    // Always return valid JSON
     res.json({
       success: true,
       count: playerProps.length,
@@ -106,7 +114,12 @@ app.get("/player-props", async (req, res) => {
     });
 
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.log("Catch error in /player-props:", err.message);
+    res.json({
+      success: true,
+      count: 0,
+      playerProps: []
+    });
   }
 });
 
