@@ -40,13 +40,18 @@ app.get("/odds", async (req, res) => {
       return res.json({ success: false, games: [], message: "No live games found" });
     }
 
-    const games = data.map(game => ({
-      gameId: game.id,
-      matchup: `${game.home_team} vs ${game.away_team}`,
-      startTime: game.commence_time,
-      league: sport,
-      leagueLogo: sport === "basketball_nba" ? "basketball.png" : null
-    }));
+    // Only today’s games
+    const todayStr = new Date().toISOString().split("T")[0];
+
+    const games = data
+      .filter(game => game.commence_time?.startsWith(todayStr))
+      .map(game => ({
+        gameId: game.id,
+        matchup: `${game.home_team} vs ${game.away_team}`,
+        startTime: game.commence_time,
+        league: sport,
+        leagueLogo: sport === "basketball_nba" ? "basketball.png" : null
+      }));
 
     res.json({ success: true, games });
   } catch (err) {
@@ -69,12 +74,11 @@ app.get("/player-props", async (req, res) => {
       return res.json({ success: true, count: 0, playerProps: [] });
     }
 
+    const todayStr = new Date().toISOString().split("T")[0];
     const props = [];
 
     data.forEach(game => {
-      const gameDate = new Date(game.commence_time);
-      const today = new Date();
-      if (gameDate.toDateString() !== today.toDateString()) return; // skip non-today games
+      if (!game.commence_time?.startsWith(todayStr)) return;
 
       game.bookmakers?.forEach(book => {
         book.markets?.forEach(market => {
