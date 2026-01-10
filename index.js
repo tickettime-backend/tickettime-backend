@@ -1,9 +1,36 @@
-app.get("/player-props", async (req, res) => {
+import express from "express";
+import fetch from "node-fetch";
+
+const app = express();
+const PORT = process.env.PORT || 10000;
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
+
+app.use(express.json());
+
+/* =========================
+   ROOT
+========================= */
+app.get("/", (req, res) => {
+  res.send("TicketTime backend running ✅");
+});
+
+/* =========================
+   TEST API KEY
+========================= */
+app.get("/test-key", (req, res) => {
+  res.json({
+    success: true,
+    keyExists: !!RAPIDAPI_KEY
+  });
+});
+
+/* =========================
+   ODDS (LIVE GAMES)
+========================= */
+app.get("/odds", async (req, res) => {
   try {
-    const eventId = req.query.eventId || "";
-    const url = `https://odds-api-io-real-time-sports-betting-odds-api.p.rapidapi.com/v2/odds${
-      eventId ? `?eventId=${eventId}` : ""
-    }&bookmakers=Bet365,Pinnacle,Betfair Sportsbook,Betfair Exchange,Betsson,1xbet`;
+    const sport = req.query.sport || "basketball_nba";
+    const url = `https://odds-api-io-real-time-sports-betting-odds-api.p.rapidapi.com/v2/odds?bookmakers=Bet365,Pinnacle,Betfair Sportsbook,Betfair Exchange,Betsson,1xbet&sport=${sport}`;
 
     const response = await fetch(url, {
       method: "GET",
@@ -14,45 +41,6 @@ app.get("/player-props", async (req, res) => {
     });
 
     const data = await response.json();
+    if (!data || !data.data) return res.json({ success: false, games: [] });
 
-    if (!data || !data.data) {
-      return res.json({ success: true, count: 0, playerProps: [] });
-    }
-
-    const props = [];
-
-    Object.values(data.data).forEach(event => {
-      const gameDate = new Date(event.startTime || event.commence_time);
-      const today = new Date();
-      if (gameDate.toDateString() !== today.toDateString()) return;
-
-      if (!event.bookmakers || event.bookmakers.length === 0) return;
-
-      event.bookmakers.forEach(book => {
-        if (!book.markets || book.markets.length === 0) return;
-
-        book.markets.forEach(market => {
-          if (!market.outcomes || market.outcomes.length === 0) return;
-
-          market.outcomes.forEach(outcome => {
-            props.push({
-              game: event.name || `${event.homeTeam} vs ${event.awayTeam}`,
-              gameId: event.id,
-              player: outcome.description || "N/A",
-              stat: market.key || "N/A",
-              line: outcome.point || "N/A",
-              odds: outcome.price || "N/A",
-              sportsbook: book.title || "N/A",
-              overUnder: null
-            });
-          });
-        });
-      });
-    });
-
-    res.json({ success: true, count: props.length, playerProps: props });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
+    const games = Object.values(data
