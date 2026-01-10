@@ -1,5 +1,6 @@
 import express from "express";
 import fetch from "node-fetch";
+import Stripe from "stripe";
 
 const app = express();
 const PORT = process.env.PORT || 10000;
@@ -8,11 +9,13 @@ const PORT = process.env.PORT || 10000;
    CONFIG
 ============================ */
 const SPORTS_ODDS_API_KEY = process.env.SPORTS_ODDS_API_KEY?.trim();
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const AFFILIATE_LINK = process.env.AFFILIATE_LINK;
 
 /* ============================
    MIDDLEWARE
 ============================ */
-app.use(express.json()); // built-in JSON parser
+app.use(express.json());
 
 /* ============================
    IN-MEMORY STORAGE
@@ -58,25 +61,52 @@ app.post("/login", (req, res) => {
 });
 
 /* ============================
-   WALLET
+   WALLET (Stripe)
 ============================ */
-app.post("/deposit", (req, res) => {
-  const { userId, amount } = req.body;
+app.post("/deposit", async (req, res) => {
+  const { userId, amount, payment_method_id } = req.body;
   const user = users.find(u => u.id === userId);
-  if (!user || !amount || amount <= 0) return res.status(400).json({ success: false, error: "Invalid deposit" });
+  if (!user || !amount || amount <= 0)
+    return res.status(400).json({ success: false, error: "Invalid deposit" });
 
-  user.balance += amount;
-  res.json({ success: true, balance: user.balance });
+  try {
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(amount * 100), // Stripe uses cents
+      currency: "usd",
+      payment_method: payment_method_id,
+      confirm: true
+    });
+
+    user.balance += amount;
+    res.json({ success: true, balance: user.balance });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
-app.post("/withdraw", (req, res) => {
-  const { userId, amount } = req.body;
+app.post("/withdraw", async (req, res) => {
+  const { userId, amount, bank_account_id } = req.body;
   const user = users.find(u => u.id === userId);
-  if (!user || !amount || amount <= 0) return res.status(400).json({ success: false, error: "Invalid withdrawal" });
-  if (user.balance < amount) return res.status(400).json({ success: false, error: "Insufficient balance" });
+  if (!user || !amount || amount <= 0)
+    return res.status(400).json({ success: false, error: "Invalid withdrawal" });
+  if (user.balance < amount)
+    return res.status(400).json({ success: false, error: "Insufficient balance" });
 
-  user.balance -= amount;
-  res.json({ success: true, balance: user.balance });
+  try {
+    // Create payout
+    const payout = await stripe.payouts.create({
+      amount: Math.round(amount * 100),
+      currency: "usd",
+      destination: bank_account_id
+    });
+
+    user.balance -= amount;
+    res.json({ success: true, balance: user.balance });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 /* ============================
@@ -85,7 +115,8 @@ app.post("/withdraw", (req, res) => {
 app.get("/odds", async (req, res) => {
   try {
     const sport = req.query.sport || "NBA";
-    const url = `https://api.sportsgameodds.com/v2/events?oddsAvailable=true&leagueID=${sport}&limit=20`;
+    const today = new Date().toISOString().split("T")[0]; // YYYY-MM-DD
+    const url = `https://api.sportsgameodds.com/v2/events?oddsAvailable=true&leagueID=${sport}&date=${today}&limit=20`;
 
     const response = await fetch(url, { headers: { "x-api-key": SPORTS_ODDS_API_KEY } });
     if (!response.ok) return res.status(500).json({ error: "Failed to fetch odds" });
@@ -105,12 +136,13 @@ app.get("/odds", async (req, res) => {
 });
 
 /* ============================
-   PLAYER PROPS (Multi-Sport)
+   PLAYER PROPS (Filtered)
 ============================ */
 app.get("/player-props", async (req, res) => {
   try {
     const sport = req.query.sport || "NBA";
-    const url = `https://api.sportsgameodds.com/v2/events?oddsAvailable=true&leagueID=${sport}&limit=20`;
+    const today = new Date().toISOString().split("T")[0];
+    const url = `https://api.sportsgameodds.com/v2/events?oddsAvailable=true&leagueID=${sport}&date=${today}&limit=20`;
 
     const response = await fetch(url, { headers: { "x-api-key": SPORTS_ODDS_API_KEY } });
     if (!response.ok) return res.status(500).json({ error: "Failed to fetch player props" });
@@ -120,6 +152,7 @@ app.get("/player-props", async (req, res) => {
 
     (data.events || []).forEach(game => {
       (game.playerProps || []).forEach(prop => {
+        if (prop.injuryStatus && prop.injuryStatus !== "Healthy") return; // skip injured
         playerProps.push({
           league: sport,
           game: `${game.homeTeam} vs ${game.awayTeam}`,
@@ -143,7 +176,7 @@ app.get("/player-props", async (req, res) => {
 /* ============================
    PLACE BET
 ============================ */
-app.post("/place-bet", async (req, res) => {
+app.post("/place-bet", (req, res) => {
   const { userId, bets } = req.body;
   if (!userId || !bets || !Array.isArray(bets) || bets.length === 0)
     return res.status(400).json({ success: false, error: "Invalid request" });
@@ -156,7 +189,9 @@ app.post("/place-bet", async (req, res) => {
 
   try {
     user.balance -= totalOdds;
-    bets.forEach(b => user.bets.push({ ...b, placedAt: new Date() }));
+    user.bets.push(
+      ...bets.map(b => ({ ...b, placedAt: new Date(), affiliateUrl: AFFILIATE_LINK }))
+    );
     res.json({ success: true, balance: user.balance });
   } catch (err) {
     console.error(err);
