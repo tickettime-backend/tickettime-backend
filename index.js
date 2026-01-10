@@ -76,6 +76,12 @@ app.get("/player-props", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
+app.get("/test-key", (req, res) => {
+  res.json({
+    success: true,
+    keyExists: !!process.env.SPORTS_ODDS_API_KEY,
+  });
+});
 
 app.listen(PORT, () =>
   console.log(`TicketTime backend live on port ${PORT}`)
