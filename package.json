@@ -1,14 +1,18 @@
 {
   "name": "tickettime-backend",
-  "version": "1.0.0",
-  "description": "Backend for TicketTime app",
+  "version": "1.1.0",
+  "description": "Sweepstakes-based game props backend for Ticket Time",
   "type": "module",
   "main": "index.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "dev": "node index.js"
   },
   "dependencies": {
-    "express": "^4.18.2",
+    "express": "^4.19.2",
     "node-fetch": "^3.3.2"
   }
 }
