@@ -1,9 +1,12 @@
 import express from "express";
 import fetch from "node-fetch";
+import dotenv from "dotenv";
+
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 10000;
-const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
+const SPORTS_ODDS_API_KEY = process.env.SPORTS_ODDS_API_KEY;
 
 app.use(express.json());
 
@@ -20,40 +23,60 @@ app.get("/", (req, res) => {
 app.get("/test-key", (req, res) => {
   res.json({
     success: true,
-    keyExists: !!RAPIDAPI_KEY,
+    keyExists: !!SPORTS_ODDS_API_KEY,
   });
 });
 
 /* =========================
+   TEST SPORTS ODDS API
+========================= */
+app.get("/test-odds-api", async (req, res) => {
+  try {
+    const LEAGUE_ID = req.query.leagueId || 79; // default NFL
+    const url = `https://www.mybookie.ag/odds/?l=${LEAGUE_ID}&o=E&isXml=False`;
+
+    const response = await fetch(url, {
+      headers: {
+        "x-api-key": SPORTS_ODDS_API_KEY,
+      },
+    });
+
+    if (!response.ok) {
+      return res.status(response.status).json({ success: false, message: "Failed to fetch odds" });
+    }
+
+    const data = await response.json();
+    const sampleGames = data.events?.slice(0, 5) || [];
+
+    res.json({ success: true, sampleGames });
+  } catch (err) {
+    console.error("Test Odds API Error:", err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* =========================
    GAMES (UPCOMING + LIVE)
-   GAME DATA ONLY
 ========================= */
 app.get("/games", async (req, res) => {
   try {
-    const url =
-      "https://odds-api-io-real-time-sports-betting-odds-api.p.rapidapi.com/v2/events";
+    const url = "https://odds-api-io-real-time-sports-betting-odds-api.p.rapidapi.com/v2/events";
 
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        "x-rapidapi-host":
-          "odds-api-io-real-time-sports-betting-odds-api.p.rapidapi.com",
-        "x-rapidapi-key": RAPIDAPI_KEY,
+        "x-rapidapi-host": "odds-api-io-real-time-sports-betting-odds-api.p.rapidapi.com",
+        "x-rapidapi-key": SPORTS_ODDS_API_KEY,
       },
     });
 
     const data = await response.json();
-
-    if (!data || !data.data) {
-      return res.json({ success: true, games: [] });
-    }
+    if (!data || !data.data) return res.json({ success: true, games: [] });
 
     const games = Object.values(data.data).map((event) => ({
       gameId: event.id,
       league: event.sport_key || "unknown",
-      matchup:
-        event.name ||
-        `${event.homeTeam || "Home"} vs ${event.awayTeam || "Away"}`,
+      matchup: event.name || `${event.homeTeam || "Home"} vs ${event.awayTeam || "Away"}`,
       homeTeam: event.homeTeam || null,
       awayTeam: event.awayTeam || null,
       startTime: event.startTime || event.commence_time,
@@ -68,29 +91,23 @@ app.get("/games", async (req, res) => {
 });
 
 /* =========================
-   GAME PROPS / MARKETS
-   (NO PLAYER PROPS)
+   GAME MARKETS (NO PLAYER PROPS)
 ========================= */
 app.get("/games/:gameId/markets", async (req, res) => {
   try {
     const { gameId } = req.params;
-
     const url = `https://odds-api-io-real-time-sports-betting-odds-api.p.rapidapi.com/v2/odds?eventId=${gameId}`;
 
     const response = await fetch(url, {
       method: "GET",
       headers: {
-        "x-rapidapi-host":
-          "odds-api-io-real-time-sports-betting-odds-api.p.rapidapi.com",
-        "x-rapidapi-key": RAPIDAPI_KEY,
+        "x-rapidapi-host": "odds-api-io-real-time-sports-betting-odds-api.p.rapidapi.com",
+        "x-rapidapi-key": SPORTS_ODDS_API_KEY,
       },
     });
 
     const data = await response.json();
-
-    if (!data || !data.data || !data.data[gameId]) {
-      return res.json({ success: true, markets: [] });
-    }
+    if (!data || !data.data || !data.data[gameId]) return res.json({ success: true, markets: [] });
 
     const event = data.data[gameId];
     const markets = [];
@@ -98,16 +115,7 @@ app.get("/games/:gameId/markets", async (req, res) => {
     event.bookmakers?.forEach((book) => {
       book.markets?.forEach((market) => {
         // ALLOWED GAME MARKETS ONLY
-        if (
-          ![
-            "h2h",
-            "spreads",
-            "totals",
-            "team_totals",
-            "first_half",
-            "first_quarter",
-          ].includes(market.key)
-        )
+        if (!["h2h", "spreads", "totals", "team_totals", "first_half", "first_quarter"].includes(market.key))
           return;
 
         market.outcomes?.forEach((outcome) => {
@@ -131,16 +139,10 @@ app.get("/games/:gameId/markets", async (req, res) => {
 
 /* =========================
    MULTIPLIER CONVERSION
-   (ODDS → SWEEPSTAKES SAFE)
 ========================= */
 function convertOddsToMultiplier(odds) {
   if (!odds) return 1.0;
-
-  // Decimal odds → multiplier
-  if (odds > 1) {
-    return Number((odds * 0.9).toFixed(2)); // house-adjusted
-  }
-
+  if (odds > 1) return Number((odds * 0.9).toFixed(2));
   return 1.0;
 }
 
