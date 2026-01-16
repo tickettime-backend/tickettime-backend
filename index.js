@@ -4,28 +4,37 @@ import dotenv from "dotenv";
 import cors from "cors";
 
 dotenv.config();
+
 const app = express();
+app.use(cors());
+app.use(express.json());
+
+/* =========================
+   ENV VARIABLES
+========================= */
 const PORT = process.env.PORT || 10000;
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+const STRIPE_PUBLISHABLE_KEY = process.env.STRIPE_PUBLISHABLE_KEY;
+const AFFILIATE_LINK = process.env.AFFILIATE_LINK;
+const BONUS_AMOUNT = Number(process.env.BONUS_AMOUNT) || 10;
+const MYBOOKIE_NFL_URL = process.env.MYBOOKIE_NFL_URL;
 
-app.use(express.json());
-app.use(cors());
-
-/* Users & Wallets */
+/* =========================
+   USERS & BONUS
+========================= */
 let users = [];
 let nextUserId = 1;
-
-/* Bonus System */
 const BONUS_NAME = "TicketTime Bonus $10";
 
-/* League IDs */
+/* =========================
+   LEAGUES
+========================= */
 const LEAGUES = {
-  NFL: 79,
-  NBA: 82,
-  MLB: 81,
-  NHL: 83,
-  NCAA_FB: 91,
-  NCAA_BB: 92,
+  NFL: MYBOOKIE_NFL_URL,
+  // Add other leagues by creating new URLs
+  // NBA: process.env.MYBOOKIE_NBA_URL,
+  // MLB: process.env.MYBOOKIE_MLB_URL,
+  // NHL: process.env.MYBOOKIE_NHL_URL,
 };
 
 /* =========================
@@ -38,17 +47,20 @@ app.get("/", (req, res) => res.send("TicketTime backend running ✅"));
 ========================= */
 app.post("/register", (req, res) => {
   const { email, password, state } = req.body;
-  if (users.find(u => u.email === email)) return res.json({ success: false, error: "Email exists" });
+  if (users.find(u => u.email === email))
+    return res.json({ success: false, error: "Email exists" });
+
   const newUser = {
     id: nextUserId++,
     email,
     password,
     balance: 0,
-    bonus: 10, // give $10 instant bonus
+    bonus: BONUS_AMOUNT, // $10 instant bonus
     slips: [],
     referralUsed: false,
     state: state || null
   };
+
   users.push(newUser);
   res.json({ success: true, user: newUser });
 });
@@ -93,7 +105,7 @@ app.post("/apply-referral", (req, res) => {
   const user = users.find(u => u.id === userId);
   if (!user) return res.json({ success: false, error: "User not found" });
   if (user.referralUsed) return res.json({ success: false, error: "Already used referral" });
-  user.balance += 10; // $10 referral
+  user.balance += BONUS_AMOUNT; // $10 referral bonus
   user.referralUsed = true;
   res.json({ success: true, balance: user.balance });
 });
@@ -104,22 +116,25 @@ app.post("/apply-referral", (req, res) => {
 app.get("/games", async (req, res) => {
   try {
     let allGames = [];
-    for (const [sport, id] of Object.entries(LEAGUES)) {
-      const url = `https://www.mybookie.ag/odds/?l=${id}&o=E&lang=en/US&isXml=False`;
+    for (const [sport, url] of Object.entries(LEAGUES)) {
       const response = await fetch(url);
       const data = await response.json();
-      if (!data?.games) continue;
-      const games = data.games.map(game => ({
+
+      if (!Array.isArray(data)) continue; // ensure it's an array
+
+      const games = data.map(game => ({
         sport,
         gameId: game.id,
-        matchup: game.name,
+        matchup: game.name || `${game.homeTeam} vs ${game.awayTeam}`,
         homeTeam: game.homeTeam,
         awayTeam: game.awayTeam,
         startTime: game.startTime,
-        lines: game.lines || game.odds,
+        lines: game.lines || game.odds
       }));
+
       allGames.push(...games);
     }
+
     res.json({ success: true, games: allGames });
   } catch (err) {
     console.error(err);
@@ -128,27 +143,67 @@ app.get("/games", async (req, res) => {
 });
 
 /* =========================
-   PLACE BET (TRACK SLIP)
+   FETCH GAME MARKETS
+========================= */
+app.get("/games/:gameId/markets", async (req, res) => {
+  try {
+    const { gameId } = req.params;
+    let marketData = null;
+
+    for (const url of Object.values(LEAGUES)) {
+      const response = await fetch(url);
+      const data = await response.json();
+      if (!Array.isArray(data)) continue;
+
+      marketData = data.find(g => g.id == gameId);
+      if (marketData) break;
+    }
+
+    if (!marketData) return res.json({ success: true, markets: [] });
+
+    const markets = [];
+    if (marketData.lines) {
+      for (const line of marketData.lines) {
+        markets.push({
+          marketType: line.key || "moneyline",
+          label: line.name || "N/A",
+          line: line.point ?? null,
+          multiplier: line.price ?? 1
+        });
+      }
+    }
+
+    res.json({ success: true, markets });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+/* =========================
+   PLACE BET / TRACK SLIP
 ========================= */
 app.post("/place-bet", (req, res) => {
   const { userId, slip } = req.body;
   const user = users.find(u => u.id === userId);
   if (!user) return res.json({ success: false, error: "User not found" });
 
-  // Check bonus balance first
   let totalStake = slip.reduce((a, b) => a + b.amount, 0);
   let bonusUsed = 0;
+
   if (user.bonus > 0) {
     bonusUsed = Math.min(user.bonus, totalStake);
     user.bonus -= bonusUsed;
     totalStake -= bonusUsed;
   }
 
-  if (user.balance < totalStake) return res.json({ success: false, error: "Insufficient funds" });
+  if (user.balance < totalStake)
+    return res.json({ success: false, error: "Insufficient funds" });
 
   user.balance -= totalStake;
   user.slips.push({ slip, bonusUsed, timestamp: new Date() });
-  res.json({ success: true, slipTracked: true, redirect: process.env.AFFILIATE_LINK });
+
+  res.json({ success: true, slipTracked: true, redirect: AFFILIATE_LINK });
 });
 
 /* =========================
